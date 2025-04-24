@@ -91,7 +91,7 @@ vim.g.mapleader = ' '
 vim.g.maplocalleader = ' '
 
 -- Set to true if you have a Nerd Font installed and selected in the terminal
-vim.g.have_nerd_font = false
+vim.g.have_nerd_font = true
 
 -- [[ Setting options ]]
 -- See `:help vim.opt`
@@ -189,6 +189,59 @@ vim.keymap.set('n', '<C-h>', '<C-w><C-h>', { desc = 'Move focus to the left wind
 vim.keymap.set('n', '<C-l>', '<C-w><C-l>', { desc = 'Move focus to the right window' })
 vim.keymap.set('n', '<C-j>', '<C-w><C-j>', { desc = 'Move focus to the lower window' })
 vim.keymap.set('n', '<C-k>', '<C-w><C-k>', { desc = 'Move focus to the upper window' })
+
+-- Opening terminals
+local function new_terminal(lang)
+  vim.cmd('split term://' .. lang)
+end
+
+local function new_terminal_python()
+  new_terminal 'python'
+end
+
+local function new_terminal_ipython()
+  new_terminal 'ipython --no-confirm-exit'
+end
+
+local function new_terminal_shell()
+  new_terminal '$SHELL'
+end
+
+vim.keymap.set('n', '<leader>ti', new_terminal_ipython, { desc = 'New [i]python terminal' })
+vim.keymap.set('n', '<leader>tp', new_terminal_python, { desc = 'New [p]ython terminal' })
+vim.keymap.set('n', '<leader>tt', new_terminal_shell, { desc = 'New [t]erminal shell' })
+
+-- Insert code chunks
+local is_code_chunk = function()
+  local current, _ = require('otter.keeper').get_current_language_context()
+  if current then
+    return true
+  else
+    return false
+  end
+end
+--- @param lang string
+local insert_code_chunk = function(lang)
+  vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes('<esc>', true, false, true), 'n', true)
+  local keys
+  if is_code_chunk() then
+    keys = [[o```<cr><cr>```{]] .. lang .. [[}<esc>o]]
+  else
+    keys = [[o```{]] .. lang .. [[}<cr>```<esc>O]]
+  end
+  keys = vim.api.nvim_replace_termcodes(keys, true, false, true)
+  vim.api.nvim_feedkeys(keys, 'n', false)
+end
+
+local insert_py_chunk = function()
+  insert_code_chunk 'python'
+end
+
+vim.keymap.set('n', '<leader>cp', insert_py_chunk, { desc = 'Insert [p]ython code chunk' })
+
+-- Keep selection after indent
+vim.keymap.set('v', '>', '>gv')
+vim.keymap.set('v', '<', '<gv')
 
 -- [[ Basic Autocommands ]]
 --  See `:help lua-guide-autocommands`
@@ -319,7 +372,8 @@ require('lazy').setup({
         { '<leader>r', group = '[R]ename' },
         { '<leader>s', group = '[S]earch' },
         { '<leader>w', group = '[W]orkspace' },
-        { '<leader>t', group = '[T]oggle' },
+        { '<leader>t', group = '[T]erminal' },
+        { '<leader>l', group = '[L]SP' },
         { '<leader>h', group = 'Git [H]unk', mode = { 'n', 'v' } },
       },
     },
@@ -581,9 +635,9 @@ require('lazy').setup({
           --
           -- This may be unwanted, since they displace some of your code
           if client and client.supports_method(vim.lsp.protocol.Methods.textDocument_inlayHint) then
-            map('<leader>th', function()
+            map('<leader>lt', function()
               vim.lsp.inlay_hint.enable(not vim.lsp.inlay_hint.is_enabled { bufnr = event.buf })
-            end, '[T]oggle Inlay [H]ints')
+            end, '[T]oggle Inlay hints (LSP)')
           end
         end,
       })
@@ -743,6 +797,7 @@ require('lazy').setup({
       --  into multiple repos for maintenance purposes.
       'hrsh7th/cmp-nvim-lsp',
       'hrsh7th/cmp-path',
+      'jmbuhr/otter.nvim',
     },
     config = function()
       -- See `:help cmp`
@@ -764,9 +819,9 @@ require('lazy').setup({
         -- No, but seriously. Please read `:help ins-completion`, it is really good!
         mapping = cmp.mapping.preset.insert {
           -- Select the [n]ext item
-          ['<C-n>'] = cmp.mapping.select_next_item(),
+          --['<C-n>'] = cmp.mapping.select_next_item(),
           -- Select the [p]revious item
-          ['<C-p>'] = cmp.mapping.select_prev_item(),
+          --['<C-p>'] = cmp.mapping.select_prev_item(),
 
           -- Scroll the documentation window [b]ack / [f]orward
           ['<C-b>'] = cmp.mapping.scroll_docs(-4),
@@ -775,13 +830,13 @@ require('lazy').setup({
           -- Accept ([y]es) the completion.
           --  This will auto-import if your LSP supports it.
           --  This will expand snippets if the LSP sent a snippet.
-          ['<C-y>'] = cmp.mapping.confirm { select = true },
+          --['<C-y>'] = cmp.mapping.confirm { select = true },
 
           -- If you prefer more traditional completion keymaps,
           -- you can uncomment the following lines
-          --['<CR>'] = cmp.mapping.confirm { select = true },
-          --['<Tab>'] = cmp.mapping.select_next_item(),
-          --['<S-Tab>'] = cmp.mapping.select_prev_item(),
+          ['<CR>'] = cmp.mapping.confirm { select = true },
+          ['<Tab>'] = cmp.mapping.select_next_item(),
+          ['<S-Tab>'] = cmp.mapping.select_prev_item(),
 
           -- Manually trigger a completion from nvim-cmp.
           --  Generally you don't need this, because nvim-cmp will display
@@ -906,6 +961,184 @@ require('lazy').setup({
     --    - Incremental selection: Included, see `:help nvim-treesitter-incremental-selection-mod`
     --    - Show your current context: https://github.com/nvim-treesitter/nvim-treesitter-context
     --    - Treesitter + textobjects: https://github.com/nvim-treesitter/nvim-treesitter-textobjects
+  },
+  { -- requires plugins in lua/plugins/treesitter.lua and lua/plugins/lsp.lua
+    -- for complete functionality (language features)
+    'quarto-dev/quarto-nvim',
+    ft = { 'quarto' },
+    dev = false,
+    opts = {},
+    dependencies = {
+      -- for language features in code cells
+      -- configured in lua/plugins/lsp.lua and
+      -- added as a nvim-cmp source in lua/plugins/completion.lua
+      'jmbuhr/otter.nvim',
+    },
+  },
+
+  { -- directly open ipynb files as quarto docuements
+    -- and convert back behind the scenes
+    'GCBallesteros/jupytext.nvim',
+    opts = {
+      custom_language_formatting = {
+        python = {
+          extension = 'qmd',
+          style = 'quarto',
+          force_ft = 'quarto',
+        },
+        r = {
+          extension = 'qmd',
+          style = 'quarto',
+          force_ft = 'quarto',
+        },
+      },
+    },
+  },
+
+  { -- send code from python/r/qmd documets to a terminal or REPL
+    -- like ipython, R, bash
+    'jpalardy/vim-slime',
+    dev = false,
+    init = function()
+      vim.b['quarto_is_python_chunk'] = false
+      Quarto_is_in_python_chunk = function()
+        require('otter.tools.functions').is_otter_language_context 'python'
+      end
+
+      vim.cmd [[
+      let g:slime_dispatch_ipython_pause = 100
+      function SlimeOverride_EscapeText_quarto(text)
+      call v:lua.Quarto_is_in_python_chunk()
+      if exists('g:slime_python_ipython') && len(split(a:text,"\n")) > 1 && b:quarto_is_python_chunk && !(exists('b:quarto_is_r_mode') && b:quarto_is_r_mode)
+      return ["%cpaste -q\n", g:slime_dispatch_ipython_pause, a:text, "--", "\n"]
+      else
+      if exists('b:quarto_is_r_mode') && b:quarto_is_r_mode && b:quarto_is_python_chunk
+      return [a:text, "\n"]
+      else
+      return [a:text]
+      end
+      end
+      endfunction
+      ]]
+
+      vim.g.slime_target = 'neovim'
+      vim.g.slime_no_mappings = true
+      vim.g.slime_python_ipython = 1
+    end,
+    config = function()
+      vim.g.slime_input_pid = false
+      vim.g.slime_suggest_default = true
+      vim.g.slime_menu_config = false
+      vim.g.slime_neovim_ignore_unlisted = true
+
+      local function mark_terminal()
+        local job_id = vim.b.terminal_job_id
+        vim.print('job_id: ' .. job_id)
+      end
+
+      local function set_terminal()
+        vim.fn.call('slime#config', {})
+      end
+      vim.keymap.set('n', '<leader>cm', mark_terminal, { desc = '[m]ark terminal' })
+      vim.keymap.set('n', '<leader>cs', set_terminal, { desc = '[s]et terminal' })
+
+      --- Send code to terminal with vim-slime
+      --- If an R terminal has been opend, this is in r_mode
+      --- and will handle python code via reticulate when sent
+      --- from a python chunk.
+      --- TODO: incorpoarate this into quarto-nvim plugin
+      --- such that QuartoRun functions get the same capabilities
+      --- TODO: figure out bracketed paste for reticulate python repl.
+      local function send_cell()
+        if vim.b['quarto_is_r_mode'] == nil then
+          vim.fn['slime#send_cell']()
+          return
+        end
+        if vim.b['quarto_is_r_mode'] == true then
+          vim.g.slime_python_ipython = 0
+          local is_python = require('otter.tools.functions').is_otter_language_context 'python'
+          if is_python and not vim.b['reticulate_running'] then
+            vim.fn['slime#send']('reticulate::repl_python()' .. '\r')
+            vim.b['reticulate_running'] = true
+          end
+          if not is_python and vim.b['reticulate_running'] then
+            vim.fn['slime#send']('exit' .. '\r')
+            vim.b['reticulate_running'] = false
+          end
+          vim.fn['slime#send_cell']()
+        end
+      end
+      vim.keymap.set('n', '<leader>c<CR>', send_cell, { desc = 'Send cell' })
+
+      --- Send code to terminal with vim-slime
+      --- If an R terminal has been opend, this is in r_mode
+      --- and will handle python code via reticulate when sent
+      --- from a python chunk.
+      local slime_send_region_cmd = ':<C-u>call slime#send_op(visualmode(), 1)<CR>'
+      slime_send_region_cmd = vim.api.nvim_replace_termcodes(slime_send_region_cmd, true, false, true)
+      local function send_region()
+        -- if filetyps is not quarto, just send_region
+        if vim.bo.filetype ~= 'quarto' or vim.b['quarto_is_r_mode'] == nil then
+          vim.cmd('normal' .. slime_send_region_cmd)
+          return
+        end
+        if vim.b['quarto_is_r_mode'] == true then
+          vim.g.slime_python_ipython = 0
+          local is_python = require('otter.tools.functions').is_otter_language_context 'python'
+          if is_python and not vim.b['reticulate_running'] then
+            vim.fn['slime#send']('reticulate::repl_python()' .. '\r')
+            vim.b['reticulate_running'] = true
+          end
+          if not is_python and vim.b['reticulate_running'] then
+            vim.fn['slime#send']('exit' .. '\r')
+            vim.b['reticulate_running'] = false
+          end
+          vim.cmd('normal' .. slime_send_region_cmd)
+        end
+      end
+      vim.keymap.set('v', '<cr>', send_region, { desc = 'Send code region' })
+    end,
+  },
+
+  { -- paste an image from the clipboard or drag-and-drop
+    'HakonHarnes/img-clip.nvim',
+    event = 'BufEnter',
+    ft = { 'markdown', 'quarto', 'latex' },
+    opts = {
+      default = {
+        dir_path = 'img',
+      },
+      filetypes = {
+        markdown = {
+          url_encode_path = true,
+          template = '![$CURSOR]($FILE_PATH)',
+          drag_and_drop = {
+            download_images = false,
+          },
+        },
+        quarto = {
+          url_encode_path = true,
+          template = '![$CURSOR]($FILE_PATH)',
+          drag_and_drop = {
+            download_images = false,
+          },
+        },
+      },
+    },
+    config = function(_, opts)
+      require('img-clip').setup(opts)
+      vim.keymap.set('n', '<leader>ii', ':PasteImage<cr>', { desc = 'insert [i]mage from clipboard' })
+    end,
+  },
+
+  { -- markdown previewer
+    'iamcco/markdown-preview.nvim',
+    cmd = { 'MarkdownPreviewToggle', 'MarkdownPreview', 'MarkdownPreviewStop' },
+    build = 'cd app && npm install',
+    init = function()
+      vim.g.mkdp_filetypes = { 'markdown' }
+    end,
+    ft = { 'markdown' },
   },
 
   -- The following two comments only work if you have downloaded the kickstart repo, not just copy pasted the
